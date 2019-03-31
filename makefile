@@ -1,10 +1,10 @@
 obj=memalloc.o test_memalloc.o
 
 prog:$(obj)
-	g++ -o $@ $^
+	g++ -g -o $@ $^
 
 %.o:%.cpp
-	g++ -c $<
+	g++ -g -c $<
 
 .PHONY:clean
 clean:

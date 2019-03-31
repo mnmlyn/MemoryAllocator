@@ -71,6 +71,27 @@ void LINK_INSERT(int offset, int logSize) {
 }
 
 /**
+ * @function    LINK_DELETE
+ * @brief       将连续的大小1<<logSize个分配单元，从free链中移除
+ * @logSize     待标记块的大小取log
+ * @return      找到的块的offset
+ */
+int LINK_DELETE(int logSize) {
+    int offset = memGlo.fList[logSize];
+    if (offset == -1)
+        return -1;
+    FreeLink *blk = (FreeLink *)(memGlo.buf + offset * memGlo.szMin);
+    if (blk->next != -1) {
+        FreeLink *blk1 = (FreeLink *)(memGlo.buf 
+                + blk->next * memGlo.szMin);
+        blk1->prev = -1;
+    }
+    memGlo.fList[logSize] = blk->next;
+    memGlo.cost[offset] = COST_INUSE | logSize;
+    return offset;
+}
+
+/**
  * @function    memalloc_init
  * @brief       内存管理程序初始化
  * @buf         被管理内存的起始地址
@@ -96,10 +117,40 @@ void memalloc_init(u8 *buf, int size, int szMin) {
         LINK_INSERT(offset, i);
         offset += blksize;
     }
-
 }
 
-
+/**
+ * @function    memalloc_malloc
+ * @brief       分配一块指定大小的内存，返回获得的内存地址
+ * @size        请求内存的大小
+ * @return      获得的内存的地址
+ */
+void *memalloc_malloc(int size) {
+    if (size <= 0)
+        return nullptr;
+    int i;
+    for (i = 0; i <= MAXLOGSIZE; ++i) {
+        if ((1 << i) * memGlo.szMin >= size)
+            break;
+    }
+    int j;
+    for (j = i; j <= MAXLOGSIZE; ++j) {
+        if (memGlo.fList[j] != -1)
+            break;
+    }
+    if (j > MAXLOGSIZE)
+        return nullptr;
+    /* 2^i为足够容纳size的内存大小，2^j为足够容纳2^i的空闲块大小 */
+    int offset = LINK_DELETE(j);
+    if (j != i) {
+        while (j > i) {
+            --j;
+            LINK_INSERT(offset + (1<<j), j);
+        }
+    }
+    memGlo.cost[offset] = COST_INUSE | i;
+    return (void *)(memGlo.buf + offset * memGlo.szMin);
+}
 
 
 
