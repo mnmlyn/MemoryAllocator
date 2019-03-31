@@ -8,6 +8,6 @@
 #ifndef _MEMALLOC_H_
 #define _MEMALLOC_H_
 
-
+void memalloc_init(unsigned char *buf, int size, int szMin);
 
 #endif

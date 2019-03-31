@@ -21,6 +21,8 @@
  * 6. 释放时，若其伙伴块为free状态，合并，直到伙伴不为free
  */
 #define MAXLOGSIZE 30   /* log(可分配最大块包含的最小单元数) */
+#define COST_INUSE 0x20 /* 第6bit置位 */
+#define COST_SIZE 0x1f  /* 低5bit置位 */
 
 /**
  * @struct  FreeLink
@@ -42,7 +44,8 @@ typedef unsigned char u8;
  * @nBlock  可用最小分配单元的数量
  * @fList   空闲块链表数组
  * @buf     待分配内存
- * @cost    开销，记录块使用情况及块大小
+ * @cost    开销，记录块使用情况及块大小，低5bit记录大小，
+ *          第6bit为1标识使用，为0标识free
  */
 static struct {
     int nBuf;
@@ -52,6 +55,59 @@ static struct {
     u8 *buf;
     u8 *cost;
 } memGlo;
+
+/**
+ * @function    LINK_INSERT
+ * @brief       将第offset块开始的1<<logSize个分配单元，插入free链
+ * @offset      待标记块起始分配单元
+ * @logSize     待标记块的大小取log
+ */
+void LINK_INSERT(int offset, int logSize) {
+    FreeLink *blk = (FreeLink *)(memGlo.buf + offset * memGlo.szMin);
+    blk->prev = -1;
+    blk->next = memGlo.fList[logSize];
+    memGlo.fList[logSize] = offset;
+    memGlo.cost[offset] = logSize;
+}
+
+/**
+ * @function    memalloc_init
+ * @brief       内存管理程序初始化
+ * @buf         被管理内存的起始地址
+ * @size        被管理内存的字节数
+ * @szMin       最小可分配内存的字节数，应>=sizeof(int)*2
+ */
+void memalloc_init(u8 *buf, int size, int szMin) {
+    memGlo.buf = buf;
+    memGlo.nBuf = size;
+    if (szMin < sizeof(int) * 2)
+        szMin = sizeof(int) * 2;
+    memGlo.szMin = szMin;
+    memGlo.nBlock = size / (szMin + sizeof(u8));/* 1 byte的开销 */
+    memGlo.cost = buf + szMin * memGlo.nBlock;
+    for (int i = 0; i <= MAXLOGSIZE; ++i) {
+        memGlo.fList[i] = -1;
+    }
+    int offset = 0;
+    for (int i = MAXLOGSIZE; i>=0; --i) {
+        int blksize = 1<<i;
+        if (offset + blksize > memGlo.nBlock)
+            continue;
+        LINK_INSERT(offset, i);
+        offset += blksize;
+    }
+
+}
+
+
+
+
+
+
+
+
+
+
 
 
 
