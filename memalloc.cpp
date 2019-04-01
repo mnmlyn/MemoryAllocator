@@ -35,6 +35,7 @@ typedef struct FreeLink {
     int prev;
 } FreeLink;
 typedef unsigned char u8;
+#define LINKNODE(offset) ((FreeLink *)(memGlo.buf + offset * memGlo.szMin))
 
 /**
  * @struct  memFlo
@@ -63,32 +64,50 @@ static struct {
  * @logSize     待标记块的大小取log
  */
 void LINK_INSERT(int offset, int logSize) {
-    FreeLink *blk = (FreeLink *)(memGlo.buf + offset * memGlo.szMin);
-    blk->prev = -1;
-    blk->next = memGlo.fList[logSize];
+    LINKNODE(offset)->prev = -1;
+    LINKNODE(offset)->next = memGlo.fList[logSize];
     memGlo.fList[logSize] = offset;
     memGlo.cost[offset] = logSize;
 }
 
 /**
- * @function    LINK_DELETE
- * @brief       将连续的大小1<<logSize个分配单元，从free链中移除
+ * @function    LINK_GET
+ * @brief       从free链中，获取连续的1<<logSize个分配单元
  * @logSize     待标记块的大小取log
  * @return      找到的块的offset
  */
-int LINK_DELETE(int logSize) {
+int LINK_GET(int logSize) {
     int offset = memGlo.fList[logSize];
     if (offset == -1)
         return -1;
-    FreeLink *blk = (FreeLink *)(memGlo.buf + offset * memGlo.szMin);
-    if (blk->next != -1) {
-        FreeLink *blk1 = (FreeLink *)(memGlo.buf 
-                + blk->next * memGlo.szMin);
-        blk1->prev = -1;
+    int next = LINKNODE(offset)->next;
+    if (next != -1) {
+        LINKNODE(next)->prev = -1;
     }
-    memGlo.fList[logSize] = blk->next;
+    memGlo.fList[logSize] = next;
     memGlo.cost[offset] = COST_INUSE | logSize;
     return offset;
+}
+
+/**
+ * @function    LINK_DELETE
+ * @brief       从free链中，删除从offset开始的大小1<<logSize的块
+ * @offset      分配块的序号
+ * @logSize     分配块的大小取log
+ */
+void LINK_DELETE(int offset, int logSize) {
+    int next = LINKNODE(offset)->next;
+    int prev = LINKNODE(offset)->prev;
+    if (prev == -1) {
+        memGlo.fList[logSize] = next;
+    }
+    else {
+        LINKNODE(prev)->next = next;
+    }
+    if (next != -1) {
+        LINKNODE(next)->prev = prev;
+    }
+    memGlo.cost[offset] = 0;
 }
 
 /**
@@ -141,7 +160,7 @@ void *memalloc_malloc(int size) {
     if (j > MAXLOGSIZE)
         return nullptr;
     /* 2^i为足够容纳size的内存大小，2^j为足够容纳2^i的空闲块大小 */
-    int offset = LINK_DELETE(j);
+    int offset = LINK_GET(j);
     if (j != i) {
         while (j > i) {
             --j;
@@ -152,7 +171,46 @@ void *memalloc_malloc(int size) {
     return (void *)(memGlo.buf + offset * memGlo.szMin);
 }
 
-
+/**
+ * @function    memalloc_free
+ * @brief       将分配的内存释放
+ * @ptr         已分配内存的指针
+ */
+void memalloc_free(void *ptr) {
+    if (ptr == 0 || ptr < memGlo.buf) {
+        //error, ptr invalid
+        return;
+    }
+    int offset = ((u8 *)ptr - memGlo.buf) / memGlo.szMin;
+    if (memGlo.cost[offset] & COST_INUSE != COST_INUSE) {
+        //error, not inuse block
+        return;
+    }
+    int logSize = memGlo.cost[offset] & COST_SIZE;
+    /**
+     * 1. 判左右，找到等大free状态的buddy
+     * 2. 若找到，更新offset与logSize，下次循环
+     * 3. 否则，插入fList，结束
+     */
+    for (;;) {
+        int buddy_offset, blkSize = 1 << logSize;
+        if (offset % blkSize)/* buddy在左 */
+            buddy_offset = offset - blkSize;
+        else
+            buddy_offset = offset + blkSize;
+        if (buddy_offset < memGlo.nBlock 
+                && (memGlo.cost[buddy_offset] & COST_INUSE) == 0
+                && (memGlo.cost[buddy_offset] & COST_SIZE) == logSize) {
+            LINK_DELETE(buddy_offset, logSize);
+            offset = offset < buddy_offset ? offset : buddy_offset;
+            logSize += 1;
+        }
+        else {
+            LINK_INSERT(offset, logSize);
+            break;
+        }
+    }
+}
 
 
 

@@ -10,4 +10,6 @@
 
 void memalloc_init(unsigned char *buf, int size, int szMin);
 void *memalloc_malloc(int size);
+void memalloc_free(void *ptr);
+
 #endif
