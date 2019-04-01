@@ -1,7 +1,7 @@
 obj=memalloc.o test_memalloc.o
 
 prog:$(obj)
-	g++ -g -o $@ $^
+	g++ -o $@ $^ -lgtest -lpthread
 
 %.o:%.cpp
 	g++ -g -c $<

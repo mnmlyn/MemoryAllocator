@@ -187,6 +187,7 @@ void memalloc_free(void *ptr) {
         return;
     }
     int logSize = memGlo.cost[offset] & COST_SIZE;
+    memGlo.cost[offset] = 0;
     /**
      * 1. 判左右，找到等大free状态的buddy
      * 2. 若找到，更新offset与logSize，下次循环
@@ -194,7 +195,7 @@ void memalloc_free(void *ptr) {
      */
     for (;;) {
         int buddy_offset, blkSize = 1 << logSize;
-        if (offset % blkSize)/* buddy在左 */
+        if (offset / blkSize % 2)/* buddy在左 */
             buddy_offset = offset - blkSize;
         else
             buddy_offset = offset + blkSize;
